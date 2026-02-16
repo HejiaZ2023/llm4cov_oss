@@ -135,7 +135,7 @@ def build_initial_prompt_from_context(
     ]
 
 
-def build_react_followup_prompt(
+def build_agentic_followup_prompt(
     *,
     parse_status: dict[str, str],
     apply_status: dict[str, str] | None,

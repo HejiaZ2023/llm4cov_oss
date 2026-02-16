@@ -1,4 +1,4 @@
-VANILLA_PROMPT = """
+DIRECT_INFER_PROMPT = """
 You are a verification expert.
 
 Your task is NOT to modify the testbench.
@@ -9,7 +9,7 @@ Context:
 - You are given:
   (1) the RTL design
   (2) the generated testbench
-- This is a vanilla generation run:
+- This is a direct_infer generation run:
   there is no coverage feedback, no simulator failure, and no iterative correction.
 - The testbench already exists and is considered correct.
 
@@ -43,10 +43,10 @@ Output format:
 - Use short paragraphs or numbered steps.
 
 This reasoning will be used as synthetic supervision data
-for vanilla (non-ReAct) testbench generation.
+for direct_infer (non-agentic) testbench generation.
 """
 
-REACT_XRUN_PROMPT = """
+AGENTIC_XRUN_PROMPT = """
 You are a verification and simulation-debugging expert.
 
 Your task is NOT to modify the testbench.
@@ -89,11 +89,11 @@ Output format:
 - Do NOT output filenames or code blocks.
 - Use numbered steps or short paragraphs.
 
-This reasoning will be used as synthetic ReAct-style supervision data
+This reasoning will be used as synthetic agentic-style supervision data
 for xrun failure recovery.
 """
 
-REACT_COVERAGE_PROMPT = """
+AGENTIC_COVERAGE_PROMPT = """
 You are a coverage-driven verification expert.
 
 Your task is NOT to modify the testbench.
@@ -136,7 +136,7 @@ Output format:
 - Do NOT output filenames or code blocks.
 - Use numbered steps or short paragraphs.
 
-This reasoning will be used as synthetic ReAct-style supervision data.
+This reasoning will be used as synthetic agentic-style supervision data.
 """
 
 # user prompt template: feed in synthetic messages (input )

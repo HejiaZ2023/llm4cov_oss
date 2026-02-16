@@ -4,7 +4,7 @@ import math
 import random
 from pathlib import Path
 
-from select_vanilla_samples import (
+from select_direct_infer_samples import (
     RunEntry,
     _build_eval_stats,
     _discover_runs,
@@ -34,13 +34,13 @@ def _filter_full_coverage(entries: list[RunEntry]) -> list[RunEntry]:
 
 
 def _write_round_output(
-    vanilla_run_dir: Path,
+    direct_infer_run_dir: Path,
     round_id: int,
     selected: list[RunEntry],
     select_mode: str,
     overwrite: bool,
 ) -> None:
-    output_dir = Path(f"{vanilla_run_dir}_{select_mode}_{round_id}")
+    output_dir = Path(f"{direct_infer_run_dir}_{select_mode}_{round_id}")
     _write_output_dir(output_dir, selected, overwrite)
     eval_stats = _build_eval_stats(selected)
     logging.info(
@@ -53,8 +53,10 @@ def _write_round_output(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Select best-of runs from a vanilla batch run.")
-    parser.add_argument("--vanilla-run-dir", required=True, type=Path)
+    parser = argparse.ArgumentParser(
+        description="Select best-of runs from a direct_infer batch run."
+    )
+    parser.add_argument("--direct_infer-run-dir", required=True, type=Path)
     parser.add_argument(
         "--dataset-split",
         type=str,
@@ -92,17 +94,17 @@ def main() -> None:
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing output dirs.")
     args = parser.parse_args()
 
-    vanilla_run_dir: Path = args.vanilla_run_dir
+    direct_infer_run_dir: Path = args.direct_infer_run_dir
     output_run_dir: Path | None = args.output_run_dir
-    if not vanilla_run_dir.is_dir():
-        raise FileNotFoundError(f"Missing vanilla run dir: {vanilla_run_dir}")
+    if not direct_infer_run_dir.is_dir():
+        raise FileNotFoundError(f"Missing direct_infer run dir: {direct_infer_run_dir}")
     if output_run_dir is not None:
         if not output_run_dir.parent.exists():
             raise FileNotFoundError(f"Missing output run dir parent: {output_run_dir.parent}")
         if output_run_dir.exists() and not args.overwrite:
             raise FileExistsError(f"Output run dir already exists: {output_run_dir}")
     else:
-        output_run_dir = vanilla_run_dir
+        output_run_dir = direct_infer_run_dir
     if args.select_cnt is None and args.select_ratio is None:
         raise ValueError("Must set --select-cnt or --select-ratio")
     if args.select_cnt is not None and args.select_ratio is not None:
@@ -112,7 +114,7 @@ def main() -> None:
     if args.select_ratio is not None and not (0.0 < args.select_ratio <= 1.0):
         raise ValueError("--select-ratio must be in (0, 1]")
 
-    run_map = _discover_runs(vanilla_run_dir)
+    run_map = _discover_runs(direct_infer_run_dir)
     dataset_cache: dict[str, dict[str, LlmGenTbContext]] = {}
 
     context_id_map: dict[str, list[str]] = {}

@@ -23,8 +23,8 @@ from llm4cov.eda_client.remote_exec import run_remote_cov_job_pipeline
 from llm4cov.eda_client.remote_sync import LOCAL_TMP_DIR
 from llm4cov.llm_query.formatted_query import OpenAIQueryArgs, query_one_file
 from llm4cov.llm_query.prompt_build import (
+    build_agentic_followup_prompt,
     build_initial_prompt_from_context,
-    build_react_followup_prompt,
 )
 from llm4cov.llm_query.types import LLMQueryStats
 from llm4cov.syn_data_gen.framework import RunContext, run_pipeline_queue_workers
@@ -58,8 +58,8 @@ LLM_MAX_COMPLETION_TOKENS = 16384
 
 
 GEN_REPETITIONS = 2
-DEFAULT_REACT_ROUNDS = 3
-DEFAULT_REACT_MODE = "markov-react"
+DEFAULT_AGENTIC_ROUNDS = 3
+DEFAULT_AGENTIC_MODE = "markov-agentic"
 
 EDA_SINGLE_STAGE_TIMEOUT_S = 30
 EDA_STAGES = 3
@@ -85,7 +85,7 @@ if not LOG_DEBUG:
 
 
 @dataclass
-class ReactRoundItem:
+class AgenticRoundItem:
     context: LlmGenTbContext
     prev_tb: DataFile | None
     prev_cov: CovResult | None
@@ -109,7 +109,7 @@ module tb_example;
 endmodule
 ```
 """
-HISTORY_FILE = "react_round_history.json"
+HISTORY_FILE = "agentic_round_history.json"
 
 
 def _parse_eval_key(key: str, run_dir: Path) -> Path | None:
@@ -358,10 +358,10 @@ def _extract_cov_categories_from_raw(
     return _extract_cov_categories_from_result(parsed, context)
 
 
-async def react_round_workflow(ctx: RunContext, item: ReactRoundItem) -> dict[str, Any]:
+async def agentic_round_workflow(ctx: RunContext, item: AgenticRoundItem) -> dict[str, Any]:
     context = item.context
-    react_rounds: int = ctx.shared["react_rounds"]
-    react_mode: str = ctx.shared["react_mode"]
+    agentic_rounds: int = ctx.shared["agentic_rounds"]
+    agentic_mode: str = ctx.shared["agentic_mode"]
     resume_history = item.resume_history
     messages = build_initial_prompt_from_context(context)
     prev_tb: DataFile | None = item.prev_tb
@@ -373,7 +373,7 @@ async def react_round_workflow(ctx: RunContext, item: ReactRoundItem) -> dict[st
     markov_snapshot: list[dict[str, str]] = []
     last_run_id = item.prev_run_id
     last_run_dir = item.prev_run_dir
-    total_rounds = max(react_rounds, 1)
+    total_rounds = max(agentic_rounds, 1)
     history_file: Path | None = None
 
     parse_status = {"status": "failed", "type": "file"}
@@ -473,7 +473,7 @@ async def react_round_workflow(ctx: RunContext, item: ReactRoundItem) -> dict[st
             "task_hash_id": last_run_id,
         }
 
-    followup_messages = build_react_followup_prompt(
+    followup_messages = build_agentic_followup_prompt(
         parse_status=parse_status,
         apply_status=None,
         eda_status=prev_eda_status,
@@ -575,7 +575,7 @@ async def react_round_workflow(ctx: RunContext, item: ReactRoundItem) -> dict[st
                 parse_status_entry = entry.get("parse_status")
                 if not isinstance(parse_status_entry, dict):
                     parse_status_entry = {"status": "failed", "type": "file"}
-                next_followup = build_react_followup_prompt(
+                next_followup = build_agentic_followup_prompt(
                     parse_status=parse_status_entry,
                     apply_status=None,
                     eda_status=next_eda_status,
@@ -585,27 +585,27 @@ async def react_round_workflow(ctx: RunContext, item: ReactRoundItem) -> dict[st
                 )
                 messages.extend(next_followup)
 
-            if react_mode == "markov-react" and updated_best:
+            if agentic_mode == "markov-agentic" and updated_best:
                 assert len(messages) >= 4, "Not enough messages for Markov snapshot"
                 markov_snapshot = [messages[0], messages[1], messages[-2], messages[-1]]
-            elif react_mode == "markov-react" and not markov_snapshot and len(messages) >= 4:
+            elif agentic_mode == "markov-agentic" and not markov_snapshot and len(messages) >= 4:
                 markov_snapshot = [messages[0], messages[1], messages[-2], messages[-1]]
 
             if cov_result is not None and cov_result.overall_coverage >= 1.0:
                 break
             continue
 
-        if react_mode not in ["react", "markov-react"]:
-            raise ValueError(f"Unknown react mode: {react_mode}")
-        if react_mode == "markov-react" and round_idx > 0:
+        if agentic_mode not in ["agentic", "markov-agentic"]:
+            raise ValueError(f"Unknown agentic mode: {agentic_mode}")
+        if agentic_mode == "markov-agentic" and round_idx > 0:
             messages_snapshot = list(markov_snapshot)
         else:
             messages_snapshot = list(messages)
-            if react_mode == "markov-react" and round_idx == 0:
+            if agentic_mode == "markov-agentic" and round_idx == 0:
                 # initialize
                 markov_snapshot = list(messages)
 
-        if react_mode == "markov-react":
+        if agentic_mode == "markov-agentic":
             assert len(messages_snapshot) == 4, "Markov snapshot must have 4 messages"
 
         try:
@@ -616,7 +616,7 @@ async def react_round_workflow(ctx: RunContext, item: ReactRoundItem) -> dict[st
                 max_retries=ctx.shared["llm_max_retries"],
                 debug=QUERY_DEBUG,
                 timeout_s=ctx.shared["llm_job_timeout_s"],
-                label=f"LLM:react_round_{round_idx}",
+                label=f"LLM:agentic_round_{round_idx}",
             )
             assert isinstance(stats, LLMQueryStats), "LLM stats is not LLMQueryStats"
             assert isinstance(tb_file, DataFile), "Returned tb_file is not DataFile"
@@ -775,7 +775,7 @@ async def react_round_workflow(ctx: RunContext, item: ReactRoundItem) -> dict[st
             next_instruction = "Fix the xrun failure by editing the testbench."
         elif next_eda_status.get("status") != "success":
             next_instruction = "Fix the coverage run failure (imc stage) by editing the testbench."
-        next_followup = build_react_followup_prompt(
+        next_followup = build_agentic_followup_prompt(
             parse_status=parse_status_new,
             apply_status=None,
             eda_status=next_eda_status,
@@ -791,7 +791,7 @@ async def react_round_workflow(ctx: RunContext, item: ReactRoundItem) -> dict[st
             prev_result_json_raw = json.dumps(eda_result, ensure_ascii=True)
         prev_cov_categories = _extract_cov_categories_from_raw(prev_result_json_raw, context)
 
-        if react_mode == "markov-react" and updated_best:
+        if agentic_mode == "markov-agentic" and updated_best:
             assert len(messages) >= 4, "Not enough messages for Markov snapshot"
             markov_snapshot = [messages[0], messages[1], messages[-2], messages[-1]]
 
@@ -841,7 +841,7 @@ def _load_dataset_contexts(dataset_name: str, ids: set[str]) -> dict[str, LlmGen
 async def main() -> None:
     global GEN_REPETITIONS
     logging.info(f"Writing to {LOCAL_TMP_DIR}...")
-    parser = argparse.ArgumentParser(description="Run single react round from eval output.")
+    parser = argparse.ArgumentParser(description="Run single agentic round from eval output.")
     parser.add_argument(
         "--eval-run-dir",
         type=Path,
@@ -899,28 +899,28 @@ async def main() -> None:
         help="Max retries for each LLM query.",
     )
     parser.add_argument(
-        "--react-rounds",
+        "--agentic-rounds",
         type=int,
-        default=DEFAULT_REACT_ROUNDS,
-        help="Number of react rounds per repetition (default: 3).",
+        default=DEFAULT_AGENTIC_ROUNDS,
+        help="Number of agentic rounds per repetition (default: 3).",
     )
     parser.add_argument(
-        "--react-mode",
+        "--agentic-mode",
         type=str,
-        default=DEFAULT_REACT_MODE,
-        choices=["react", "markov-react"],
-        help="React mode for multi-round sampling.",
+        default=DEFAULT_AGENTIC_MODE,
+        choices=["agentic", "markov-agentic"],
+        help="Agentic mode for multi-round sampling.",
     )
     parser.add_argument(
         "--resume-from-breakpoint",
         action="store_true",
-        help="Reuse existing react_round_history.json entries from a previous run.",
+        help="Reuse existing agentic_round_history.json entries from a previous run.",
     )
     parser.add_argument(
         "--previous-run-dir",
         type=Path,
         default=None,
-        help="Previous run dir containing react_round_history.json files.",
+        help="Previous run dir containing agentic_round_history.json files.",
     )
     args = parser.parse_args()
     if (args.start is not None or args.end is not None) and args.limit:
@@ -937,7 +937,7 @@ async def main() -> None:
     for dataset_name, context_id in best_entries:
         dataset_ids.setdefault(dataset_name, set()).add(context_id)
 
-    base_items: list[ReactRoundItem] = []
+    base_items: list[AgenticRoundItem] = []
     for dataset_name, ids in dataset_ids.items():
         contexts = _load_dataset_contexts(dataset_name, ids)
         for context_id in ids:
@@ -958,7 +958,7 @@ async def main() -> None:
                 prev_result_json_raw = _find_prev_result_json(task_dir)
                 prev_run_dir = str(task_dir)
             base_items.append(
-                ReactRoundItem(
+                AgenticRoundItem(
                     context=context,
                     prev_tb=prev_tb,
                     prev_cov=prev_cov,
@@ -987,11 +987,11 @@ async def main() -> None:
         base_items = base_items[: args.limit]
 
     GEN_REPETITIONS = max(args.gen_repetitions, 1)
-    items: list[ReactRoundItem] = []
-    item_index: dict[tuple[str, str, int], ReactRoundItem] = {}
+    items: list[AgenticRoundItem] = []
+    item_index: dict[tuple[str, str, int], AgenticRoundItem] = {}
     for item in base_items:
         for rep in range(GEN_REPETITIONS):
-            react_item = ReactRoundItem(
+            agentic_item = AgenticRoundItem(
                 context=item.context,
                 prev_tb=item.prev_tb,
                 prev_cov=item.prev_cov,
@@ -1001,8 +1001,8 @@ async def main() -> None:
                 separation_id=rep,
                 resume_history={},
             )
-            items.append(react_item)
-            item_index[(item.context.dataset_name, item.context.id, rep)] = react_item
+            items.append(agentic_item)
+            item_index[(item.context.dataset_name, item.context.id, rep)] = agentic_item
 
     if args.resume_from_breakpoint:
         if args.previous_run_dir is None:
@@ -1107,7 +1107,7 @@ async def main() -> None:
 
     results, stats = await run_pipeline_queue_workers(
         items,
-        workflow=react_round_workflow,
+        workflow=agentic_round_workflow,
         orchestrator_workers=args.orchestrator_workers,
         llm_concurrency=args.llm_concurrency,
         eda_concurrency=args.eda_concurrency,
@@ -1115,8 +1115,8 @@ async def main() -> None:
         eda_timeout_s=EDA_JOB_TIMEOUT_S,
         shared={
             "client": client,
-            "react_rounds": max(args.react_rounds, 1),
-            "react_mode": args.react_mode,
+            "agentic_rounds": max(args.agentic_rounds, 1),
+            "agentic_mode": args.agentic_mode,
             "server": args.server,
             "model": args.model,
             "tokenizer_dir": args.tokenizer_dir,
@@ -1145,7 +1145,7 @@ async def main() -> None:
         prev_cov = r.value.get("prev_cov")
         if isinstance(cov_result, CovResult):
             cov_results.append(
-                (r.value["local_id_dir"], r.value.get("task_hash_id", "react_round"), cov_result)
+                (r.value["local_id_dir"], r.value.get("task_hash_id", "agentic_round"), cov_result)
             )
         history_index.append(
             {
@@ -1205,7 +1205,7 @@ async def main() -> None:
     cov_stats["improved_rounds_list"] = improved_rounds
 
     cov_stats["cov_comparisons"] = comparisons
-    cov_stats["react_history_index"] = history_index
+    cov_stats["agentic_history_index"] = history_index
     cov_stats["source_eval_run_dir"] = str(eval_run_dir)
 
     states_file = LOCAL_TMP_DIR / "eval_stats.json"

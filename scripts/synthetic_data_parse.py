@@ -119,7 +119,7 @@ def _best_entries_from_eval_stats(
     raise ValueError("eval_stats.json missing best_results_output or best_rids")
 
 
-def _build_vanilla_messages(context: LlmGenTbContext) -> list[dict[str, str]]:
+def _build_direct_infer_messages(context: LlmGenTbContext) -> list[dict[str, str]]:
     llm_context = inject_prompt_into_tb_generation(context)
     messages = build_initial_prompt_from_context(llm_context)
     messages = _strip_prompt_injection_messages(messages)
@@ -133,8 +133,8 @@ def _format_tb_output(tb_file: DataFile) -> dict[str, str]:
     }
 
 
-def _iter_react_histories(run_dir: Path) -> Iterable[tuple[str, str, str | None, Path]]:
-    for history_path in run_dir.rglob("react_round_history.json"):
+def _iter_agentic_histories(run_dir: Path) -> Iterable[tuple[str, str, str | None, Path]]:
+    for history_path in run_dir.rglob("agentic_round_history.json"):
         try:
             rel = history_path.relative_to(run_dir)
         except ValueError:
@@ -152,7 +152,7 @@ def _iter_react_histories(run_dir: Path) -> Iterable[tuple[str, str, str | None,
         else:  # len(rel.parts) == 4
             dataset_name = "/".join(rel.parts[:-2])
             context_id = rel.parts[-2]
-            # run id should be a folder at same level of react_round_history.json
+            # run id should be a folder at same level of agentic_round_history.json
             run_id_candidates = [p for p in history_path.parent.iterdir() if p.is_dir()]
             if len(run_id_candidates) != 1:
                 logging.warning(
@@ -225,7 +225,7 @@ def _find_tb_from_task_dir(
     return candidates[0]
 
 
-def _iter_vanilla_task_dirs(run_dir: Path) -> Iterable[tuple[str, str, str, Path, Path]]:
+def _iter_direct_infer_task_dirs(run_dir: Path) -> Iterable[tuple[str, str, str, Path, Path]]:
     for result_path in run_dir.rglob("*_result.json"):
         try:
             rel = result_path.relative_to(run_dir)
@@ -240,7 +240,7 @@ def _iter_vanilla_task_dirs(run_dir: Path) -> Iterable[tuple[str, str, str, Path
         yield dataset_name, context_id, run_id, task_dir, result_path
 
 
-def _collect_vanilla_rows(run_dir: Path, fetch_best: bool) -> list[dict[str, Any]]:
+def _collect_direct_infer_rows(run_dir: Path, fetch_best: bool) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     best_entries: dict[tuple[str, str], dict[str, Any]] = {}
     if fetch_best:
@@ -251,7 +251,7 @@ def _collect_vanilla_rows(run_dir: Path, fetch_best: bool) -> list[dict[str, Any
         for dataset_name, context_id in best_entries:
             dataset_ids.setdefault(dataset_name, set()).add(context_id)
     else:
-        for dataset_name, context_id, _, _, _ in _iter_vanilla_task_dirs(run_dir):
+        for dataset_name, context_id, _, _, _ in _iter_direct_infer_task_dirs(run_dir):
             dataset_ids.setdefault(dataset_name, set()).add(context_id)
 
     contexts_by_dataset: dict[str, dict[str, LlmGenTbContext]] = {}
@@ -260,7 +260,7 @@ def _collect_vanilla_rows(run_dir: Path, fetch_best: bool) -> list[dict[str, Any
 
     if fetch_best:
         entries = list(best_entries.items())
-        iterable = tqdm(entries, desc="Processing vanilla entries", total=len(entries))
+        iterable = tqdm(entries, desc="Processing direct_infer entries", total=len(entries))
         for (dataset_name, context_id), entry in iterable:
             if not isinstance(entry, dict):
                 logging.warning("Skipping invalid entry for %s:%s", dataset_name, context_id)
@@ -283,14 +283,14 @@ def _collect_vanilla_rows(run_dir: Path, fetch_best: bool) -> list[dict[str, Any
             if tb_file is None:
                 logging.warning("Missing TB file in %s", task_dir)
                 continue
-            messages = _build_vanilla_messages(context)
+            messages = _build_direct_infer_messages(context)
             rows.append(
                 {
                     "input": messages,
                     "output": _format_tb_output(tb_file),
                     "dataset": dataset_name,
                     "context_id": context_id,
-                    "run_type": "vanilla",
+                    "run_type": "direct_infer",
                     "cov_result": _cov_label_from_entry(entry),
                     "prev_cov_result": None,
                     "run_id": str(run_id),
@@ -298,9 +298,9 @@ def _collect_vanilla_rows(run_dir: Path, fetch_best: bool) -> list[dict[str, Any
             )
         return rows
 
-    tasks = list(_iter_vanilla_task_dirs(run_dir))
+    tasks = list(_iter_direct_infer_task_dirs(run_dir))
     for dataset_name, context_id, run_id, task_dir, result_path in tqdm(
-        tasks, desc="Processing vanilla runs", total=len(tasks)
+        tasks, desc="Processing direct_infer runs", total=len(tasks)
     ):
         context = contexts_by_dataset.get(dataset_name, {}).get(context_id)
         if context is None:
@@ -328,14 +328,14 @@ def _collect_vanilla_rows(run_dir: Path, fetch_best: bool) -> list[dict[str, Any
                 e,
             )
             continue
-        messages = _build_vanilla_messages(context)
+        messages = _build_direct_infer_messages(context)
         rows.append(
             {
                 "input": messages,
                 "output": _format_tb_output(tb_file),
                 "dataset": dataset_name,
                 "context_id": context_id,
-                "run_type": "vanilla",
+                "run_type": "direct_infer",
                 "cov_result": _cov_label_from_entry(cov_result.model_dump()),
                 "prev_cov_result": None,
                 "run_id": str(run_id),
@@ -344,15 +344,15 @@ def _collect_vanilla_rows(run_dir: Path, fetch_best: bool) -> list[dict[str, Any
     return rows
 
 
-def _collect_react_rows(run_dir: Path, fetch_best: bool) -> list[dict[str, Any]]:
+def _collect_agentic_rows(run_dir: Path, fetch_best: bool) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    histories = list(_iter_react_histories(run_dir))
+    histories = list(_iter_agentic_histories(run_dir))
     best_entries: dict[tuple[str, str], dict[str, Any]] = {}
     if fetch_best:
         eval_stats = _load_eval_stats(run_dir)
         best_entries = _best_entries_from_eval_stats(eval_stats, run_dir)
     for dataset_name, context_id, run_id, history_path in tqdm(
-        histories, desc="Processing react histories", total=len(histories)
+        histories, desc="Processing agentic histories", total=len(histories)
     ):
         with history_path.open("r", encoding="utf-8") as f:
             history = json.load(f)
@@ -389,7 +389,7 @@ def _collect_react_rows(run_dir: Path, fetch_best: bool) -> list[dict[str, Any]]
                 "output": {"role": "assistant", "content": output},
                 "dataset": dataset_name,
                 "context_id": context_id,
-                "run_type": "react",
+                "run_type": "agentic",
                 "cov_result": _cov_label_from_entry(entry.get("cov_result")),
                 "prev_cov_result": _cov_label_from_entry(entry.get("prev_cov_result")),
                 "run_id": history_run_id,
@@ -407,14 +407,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--run-type",
-        choices=["vanilla", "react"],
+        choices=["direct_infer", "agentic"],
         required=True,
-        help="Whether the run dir is vanilla or react.",
+        help="Whether the run dir is direct_infer or agentic.",
     )
     parser.add_argument(
         "--fetch-best",
         action="store_true",
-        help="For react runs, use eval_stats.json to select the best run per context.",
+        help="For agentic runs, use eval_stats.json to select the best run per context.",
     )
     parser.add_argument("--output", type=Path, required=True, help="Output jsonl path.")
     args = parser.parse_args()
@@ -423,10 +423,10 @@ def main() -> None:
     if not run_dir.is_dir():
         raise FileNotFoundError(f"Run dir does not exist: {run_dir}")
 
-    if args.run_type == "vanilla":
-        rows = _collect_vanilla_rows(run_dir, args.fetch_best)
+    if args.run_type == "direct_infer":
+        rows = _collect_direct_infer_rows(run_dir, args.fetch_best)
     else:
-        rows = _collect_react_rows(run_dir, args.fetch_best)
+        rows = _collect_agentic_rows(run_dir, args.fetch_best)
 
     _write_jsonl(args.output, rows)
     logging.info("Wrote %d rows to %s", len(rows), args.output)

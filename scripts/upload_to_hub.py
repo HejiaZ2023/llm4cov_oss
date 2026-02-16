@@ -77,7 +77,7 @@ def main() -> None:
     parser.add_argument(
         "--dst-dataset",
         type=str,
-        required=True,  # example: "hez2024/cvdp_ecov_train_sampled_dagger_react_r3"
+        required=True,  # example: "hez2024/cvdp_ecov_train_sampled_dagger_agentic_r3"
         help="Destination dataset name on Hugging Face Hub.",
     )
     parser.add_argument(

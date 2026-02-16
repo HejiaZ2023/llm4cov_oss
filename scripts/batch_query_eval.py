@@ -23,8 +23,8 @@ from llm4cov.eda_client.remote_exec import run_remote_cov_job_pipeline
 from llm4cov.eda_client.remote_sync import LOCAL_TMP_DIR
 from llm4cov.llm_query.formatted_query import OpenAIQueryArgs, query_one_file
 from llm4cov.llm_query.prompt_build import (
+    build_agentic_followup_prompt,
     build_initial_prompt_from_context,
-    build_react_followup_prompt,
 )
 from llm4cov.llm_query.types import AsyncOpenAICredentialsRefresher
 from llm4cov.syn_data_gen.framework import RunContext, run_pipeline_queue_workers
@@ -37,7 +37,7 @@ DEFAULT_LLM_TEMPERATURE = 0.7
 DEFAULT_LLM_MAX_COMPLETION_TOKENS = 8192
 DEFAULT_LLM_SINGLE_QUERY_TIMEOUT_S = 240
 DEFAULT_LLM_RETRIES = 3
-DEFAULT_REACT_ROUNDS = 3
+DEFAULT_AGENTIC_ROUNDS = 3
 
 DEFAULT_EDA_SINGLE_STAGE_TIMEOUT_S = 30
 DEFAULT_EDA_STAGES = 3
@@ -66,7 +66,7 @@ class EvalItem:
 
 @dataclass(frozen=True)
 class ResumeEvalItem(EvalItem):
-    vanilla_local_work_dir: Path
+    direct_infer_local_work_dir: Path
 
 
 OUTPUT_FORMAT_REQ = """
@@ -155,7 +155,7 @@ def _load_dataset(
     return contexts
 
 
-def _find_vanilla_tb(task_dir: Path, context: LlmGenTbContext) -> DataFile:
+def _find_direct_infer_tb(task_dir: Path, context: LlmGenTbContext) -> DataFile:
     assert task_dir.is_dir()
     rtl_names = {f.name for f in context.rtl_files}
     candidates = [p for p in task_dir.iterdir() if p.is_file() and p.name not in rtl_names]
@@ -167,14 +167,14 @@ def _find_vanilla_tb(task_dir: Path, context: LlmGenTbContext) -> DataFile:
     return DataFile(name=tb_path.name, content=content)
 
 
-def _find_vanilla_result_json(task_dir: Path) -> Path:
+def _find_direct_infer_result_json(task_dir: Path) -> Path:
     assert task_dir.is_dir()
     candidates = [p for p in task_dir.iterdir() if p.is_file() and p.name.endswith("_result.json")]
     assert len(candidates) == 1, f"Expected one result json in {task_dir}, found: {candidates}"
     return candidates[0]
 
 
-def _load_vanilla_result_json(path: Path) -> dict[str, Any]:
+def _load_direct_infer_result_json(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict):
@@ -182,12 +182,12 @@ def _load_vanilla_result_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def _discover_vanilla_runs(vanilla_run_dir: Path) -> dict[tuple[str, str], list[Path]]:
+def _discover_direct_infer_runs(direct_infer_run_dir: Path) -> dict[tuple[str, str], list[Path]]:
     run_map: dict[tuple[str, str], list[Path]] = {}
-    for result_path in vanilla_run_dir.rglob("*_result.json"):
+    for result_path in direct_infer_run_dir.rglob("*_result.json"):
         run_dir = result_path.parent
         context_dir = run_dir.parent
-        dataset_rel = context_dir.relative_to(vanilla_run_dir)
+        dataset_rel = context_dir.relative_to(direct_infer_run_dir)
         assert len(dataset_rel.parts) == 3, (
             f"Unexpected structure: {dataset_rel}, should be 3 parts"
         )
@@ -200,8 +200,8 @@ def _discover_vanilla_runs(vanilla_run_dir: Path) -> dict[tuple[str, str], list[
 async def eval_workflow(ctx: RunContext, item: EvalItem) -> dict[str, Any]:
     context = item.context
     query_args: OpenAIQueryArgs = ctx.shared["query_args"]
-    react_query_args: OpenAIQueryArgs = ctx.shared["react_query_args"]
-    use_separate_react_client: bool = ctx.shared["use_separate_react_client"]
+    agentic_query_args: OpenAIQueryArgs = ctx.shared["agentic_query_args"]
+    use_separate_agentic_client: bool = ctx.shared["use_separate_agentic_client"]
     llm_retries: int = ctx.shared["llm_retries"]
     llm_job_timeout_s: float = ctx.shared["llm_job_timeout_s"]
     eda_job_timeout_s: float = ctx.shared["eda_job_timeout_s"]
@@ -209,8 +209,8 @@ async def eval_workflow(ctx: RunContext, item: EvalItem) -> dict[str, Any]:
     server: str = ctx.shared["server"]
     remote_repo_dir: str = ctx.shared["remote_repo_dir"]
     query_debug: bool = ctx.shared["query_debug"]
-    react_mode: str = ctx.shared["react_mode"]
-    react_rounds: int = ctx.shared["react_rounds"]
+    agentic_mode: str = ctx.shared["agentic_mode"]
+    agentic_rounds: int = ctx.shared["agentic_rounds"]
     save_round_inputs: bool = ctx.shared["save_round_inputs"]
 
     messages = build_initial_prompt_from_context(context)
@@ -221,14 +221,14 @@ async def eval_workflow(ctx: RunContext, item: EvalItem) -> dict[str, Any]:
     local_id_dir: Path | None = None
     task_hash_id: str | None = None
     round_debug_info: list[dict[str, Any]] = []
-    total_rounds = 1 if react_mode == "none" else (1 + react_rounds)
+    total_rounds = 1 if agentic_mode == "none" else (1 + agentic_rounds)
     markov_snapshot: list[dict[str, str]] = []
-    use_markov_snapshot = react_mode in ["markov-react", "markov-react-only"]
+    use_markov_snapshot = agentic_mode in ["markov-agentic", "markov-agentic-only"]
 
     try:
         for round_idx in range(total_rounds):
-            if react_mode not in ["none", "react", "markov-react", "markov-react-only"]:
-                raise ValueError(f"Unknown react mode: {react_mode}")
+            if agentic_mode not in ["none", "agentic", "markov-agentic", "markov-agentic-only"]:
+                raise ValueError(f"Unknown agentic mode: {agentic_mode}")
             if use_markov_snapshot and round_idx > 1:
                 messages_snapshot = list(markov_snapshot)
             else:
@@ -242,20 +242,20 @@ async def eval_workflow(ctx: RunContext, item: EvalItem) -> dict[str, Any]:
                 }
             )
 
-            if react_mode == "markov-react-only" and round_idx == 0:
+            if agentic_mode == "markov-agentic-only" and round_idx == 0:
                 assert isinstance(item, ResumeEvalItem), (
-                    f"Vanilla run missing for {context.dataset_name}:{context.id}"
+                    f"DirectInfer run missing for {context.dataset_name}:{context.id}"
                 )
-                vanilla_dir = item.vanilla_local_work_dir
-                tb_file = _find_vanilla_tb(vanilla_dir, context)
-                result_path = _find_vanilla_result_json(vanilla_dir)
-                latest_eda_result = _load_vanilla_result_json(result_path)
-                latest_eda_result["local_work_dir"] = str(vanilla_dir)
+                direct_infer_dir = item.direct_infer_local_work_dir
+                tb_file = _find_direct_infer_tb(direct_infer_dir, context)
+                result_path = _find_direct_infer_result_json(direct_infer_dir)
+                latest_eda_result = _load_direct_infer_result_json(result_path)
+                latest_eda_result["local_work_dir"] = str(direct_infer_dir)
                 stats_history.append(None)
             else:
                 round_query_args = (
-                    react_query_args
-                    if (use_separate_react_client and round_idx > 0)
+                    agentic_query_args
+                    if (use_separate_agentic_client and round_idx > 0)
                     else query_args
                 )
 
@@ -298,7 +298,7 @@ async def eval_workflow(ctx: RunContext, item: EvalItem) -> dict[str, Any]:
             elif isinstance(item, ResumeEvalItem) and round_idx == 0:
                 local_id_dir = LOCAL_TMP_DIR / context.dataset_name / context.id
                 local_id_dir.mkdir(parents=True, exist_ok=True)
-                task_hash_id = item.vanilla_local_work_dir.name
+                task_hash_id = item.direct_infer_local_work_dir.name
             elif local_id_dir is None:
                 local_id_dir = LOCAL_TMP_DIR / context.dataset_name / context.id
                 local_id_dir.mkdir(parents=True, exist_ok=True)
@@ -311,7 +311,7 @@ async def eval_workflow(ctx: RunContext, item: EvalItem) -> dict[str, Any]:
                 best_cov_result = eval_result
                 updated_best = True
 
-            if react_mode == "none" or round_idx >= total_rounds - 1:
+            if agentic_mode == "none" or round_idx >= total_rounds - 1:
                 continue
 
             instruction = "Improve coverage toward 100% by editing the testbench."
@@ -326,7 +326,7 @@ async def eval_workflow(ctx: RunContext, item: EvalItem) -> dict[str, Any]:
                         "Fix the coverage run failure (imc stage) by editing the testbench."
                     )
 
-            followup_messages = build_react_followup_prompt(
+            followup_messages = build_agentic_followup_prompt(
                 parse_status={"status": "success", "type": "file"},  # Exception handled above
                 apply_status=None,
                 eda_status=eda_status,
@@ -352,7 +352,7 @@ async def eval_workflow(ctx: RunContext, item: EvalItem) -> dict[str, Any]:
             round_debug_info.append(
                 {"final_best_cov_result": best_cov_result.model_dump(), "error": str(e)}
             )
-            round_inputs_file = local_id_dir / f"react_eval_round_inputs_{item.repeat_index}.json"
+            round_inputs_file = local_id_dir / f"agentic_eval_round_inputs_{item.repeat_index}.json"
             with round_inputs_file.open("w", encoding="utf-8") as f:
                 json.dump(round_debug_info, f, indent=2, ensure_ascii=True)
         return {
@@ -373,7 +373,7 @@ async def eval_workflow(ctx: RunContext, item: EvalItem) -> dict[str, Any]:
         local_id_dir.mkdir(parents=True, exist_ok=True)
 
     if save_round_inputs and round_debug_info:
-        round_inputs_file = local_id_dir / f"react_eval_round_inputs_{item.repeat_index}.json"
+        round_inputs_file = local_id_dir / f"agentic_eval_round_inputs_{item.repeat_index}.json"
         round_debug_info.append({"final_best_cov_result": best_cov_result.model_dump()})
         with round_inputs_file.open("w", encoding="utf-8") as f:
             json.dump(round_debug_info, f, indent=2, ensure_ascii=True)
@@ -561,50 +561,52 @@ async def main() -> None:
     )
     parser.add_argument("--debug", action="store_true", help="Log extra info.")
     parser.add_argument(
-        "--react-mode",
+        "--agentic-mode",
         type=str,
         default="none",
-        choices=["none", "react", "markov-react", "markov-react-only"],
-        help="React mode for follow-up rounds.",
+        choices=["none", "agentic", "markov-agentic", "markov-agentic-only"],
+        help="Agentic mode for follow-up rounds.",
     )
     parser.add_argument(
-        "--vanilla-run-dir",
+        "--direct_infer-run-dir",
         type=Path,
         default=None,
-        help="Vanilla run dir (required for markov-react-only).",
+        help="DirectInfer run dir (required for markov-agentic-only).",
     )
     parser.add_argument(
-        "--react-rounds",
+        "--agentic-rounds",
         type=int,
-        default=DEFAULT_REACT_ROUNDS,
-        help="Number of react follow-up rounds (default: 3).",
+        default=DEFAULT_AGENTIC_ROUNDS,
+        help="Number of agentic follow-up rounds (default: 3).",
     )
-    # A whole group of react client args
+    # A whole group of agentic client args
     parser.add_argument(
-        "--use-separate-react-client", action="store_true", help="Use separate client."
+        "--use-separate-agentic-client", action="store_true", help="Use separate client."
     )
     parser.add_argument(
-        "--react-base-url", type=str, default="http://localhost", help="React Base URL."
+        "--agentic-base-url", type=str, default="http://localhost", help="Agentic Base URL."
     )
-    parser.add_argument("--react-port", type=int, default=8000, help="React API port.")
-    parser.add_argument("--react-api-key", type=str, default="dummy", help="React API key.")
-    parser.add_argument("--react-model", type=str, default=None, help="React model.")
+    parser.add_argument("--agentic-port", type=int, default=8000, help="Agentic API port.")
+    parser.add_argument("--agentic-api-key", type=str, default="dummy", help="Agentic API key.")
+    parser.add_argument("--agentic-model", type=str, default=None, help="Agentic model.")
     parser.add_argument(
-        "--react-max-completion-tokens",
+        "--agentic-max-completion-tokens",
         type=int,
         default=DEFAULT_LLM_MAX_COMPLETION_TOKENS,
-        help="React max completion tokens.",
+        help="Agentic max completion tokens.",
     )
     parser.add_argument(
-        "--react-tokenizer-dir", type=str, default=None, help="React tokenizer directory."
-    )
-    parser.add_argument("--react-temperature", type=float, default=None, help="React temperature.")
-    parser.add_argument("--react-top-p", type=float, default=None, help="React top-p.")
-    parser.add_argument(
-        "--react-timeout-seconds", type=float, default=None, help="React timeout seconds."
+        "--agentic-tokenizer-dir", type=str, default=None, help="Agentic tokenizer directory."
     )
     parser.add_argument(
-        "--react-use-responses-api", action="store_true", help="Use Responses API for React."
+        "--agentic-temperature", type=float, default=None, help="Agentic temperature."
+    )
+    parser.add_argument("--agentic-top-p", type=float, default=None, help="Agentic top-p.")
+    parser.add_argument(
+        "--agentic-timeout-seconds", type=float, default=None, help="Agentic timeout seconds."
+    )
+    parser.add_argument(
+        "--agentic-use-responses-api", action="store_true", help="Use Responses API for Agentic."
     )
     #
     parser.add_argument("--use-vertex", action="store_true", help="Use Vertex AI client.")
@@ -623,23 +625,25 @@ async def main() -> None:
         end_idx=args.end_idx,
         prompt_injection=args.prompt_injection,
     )
-    if args.react_mode == "markov-react-only":
-        assert args.vanilla_run_dir, "markov-react-only requires --vanilla-run-dir"
-        vanilla_run_dir = args.vanilla_run_dir
-        assert vanilla_run_dir.is_dir(), f"Missing vanilla run dir: {vanilla_run_dir}"
-        run_map = _discover_vanilla_runs(vanilla_run_dir)
+    if args.agentic_mode == "markov-agentic-only":
+        assert args.direct_infer_run_dir, "markov-agentic-only requires --direct_infer-run-dir"
+        direct_infer_run_dir = args.direct_infer_run_dir
+        assert direct_infer_run_dir.is_dir(), (
+            f"Missing direct_infer run dir: {direct_infer_run_dir}"
+        )
+        run_map = _discover_direct_infer_runs(direct_infer_run_dir)
         items: list[EvalItem] = []
         for ctx in contexts:
             key = (ctx.dataset_name, ctx.id)
             run_dirs = run_map.get(key, [])
             assert len(run_dirs) <= args.n_samples, (
-                f"Too many vanilla runs for {ctx.dataset_name}:{ctx.id}"
+                f"Too many direct_infer runs for {ctx.dataset_name}:{ctx.id}"
             )
             run_dirs = sorted(run_dirs, key=lambda p: p.name)
             for repeat_index in range(min(len(run_dirs), args.n_samples)):
                 local_work_dir = run_dirs[repeat_index]
                 context_dir = local_work_dir.parent
-                dataset_rel = context_dir.relative_to(vanilla_run_dir)
+                dataset_rel = context_dir.relative_to(direct_infer_run_dir)
                 dataset_name = "/".join(dataset_rel.parts[:-1])
                 assert dataset_name == ctx.dataset_name, f"Dataset mismatch for {local_work_dir}"
                 assert context_dir.name == ctx.id, f"Context mismatch for {local_work_dir}"
@@ -647,7 +651,7 @@ async def main() -> None:
                     ResumeEvalItem(
                         context=ctx,
                         repeat_index=repeat_index,
-                        vanilla_local_work_dir=local_work_dir,
+                        direct_infer_local_work_dir=local_work_dir,
                     )
                 )
         exp_ctx_id_cnt = len(contexts)
@@ -655,8 +659,8 @@ async def main() -> None:
         exp_run_id_cnt = exp_ctx_id_cnt * args.n_samples
         got_run_id_cnt = len(items)
         print(
-            f"Discovered {got_ctx_id_cnt}/{exp_ctx_id_cnt} contexts with vanilla runs, "
-            f"total {got_run_id_cnt}/{exp_run_id_cnt} runs for markov-react-only."
+            f"Discovered {got_ctx_id_cnt}/{exp_ctx_id_cnt} contexts with direct_infer runs, "
+            f"total {got_run_id_cnt}/{exp_run_id_cnt} runs for markov-agentic-only."
         )
     else:
         items = [
@@ -700,30 +704,32 @@ async def main() -> None:
     query_args_log.pop("client", None)
     print(f"Using query args: {query_args_log}")
 
-    if args.use_separate_react_client:
-        assert args.react_model is not None, (
-            "React model must be specified if using separate client"
+    if args.use_separate_agentic_client:
+        assert args.agentic_model is not None, (
+            "Agentic model must be specified if using separate client"
         )
-        react_client = _build_client(args.react_base_url, args.react_port, args.react_api_key)
-        react_query_args_fields: dict[str, Any] = {
-            "client": react_client,
-            "model": args.react_model,
-            "max_completion_tokens": args.react_max_completion_tokens,
+        agentic_client = _build_client(
+            args.agentic_base_url, args.agentic_port, args.agentic_api_key
+        )
+        agentic_query_args_fields: dict[str, Any] = {
+            "client": agentic_client,
+            "model": args.agentic_model,
+            "max_completion_tokens": args.agentic_max_completion_tokens,
         }
-        if args.react_temperature is not None:
-            react_query_args_fields["temperature"] = args.react_temperature
-        if args.react_top_p is not None:
-            react_query_args_fields["top_p"] = args.react_top_p
-        if args.react_timeout_seconds is not None:
-            react_query_args_fields["timeout_seconds"] = args.react_timeout_seconds
-        if args.react_tokenizer_dir is not None:
-            react_query_args_fields["tokenizer_dir"] = args.react_tokenizer_dir
-        if args.react_use_responses_api:
-            react_query_args_fields["use_responses_api"] = True
-        react_query_args = OpenAIQueryArgs(**react_query_args_fields)
-        react_query_args_log = react_query_args.model_dump()
-        react_query_args_log.pop("client", None)
-        print(f"Using separate React query args: {react_query_args_log}")
+        if args.agentic_temperature is not None:
+            agentic_query_args_fields["temperature"] = args.agentic_temperature
+        if args.agentic_top_p is not None:
+            agentic_query_args_fields["top_p"] = args.agentic_top_p
+        if args.agentic_timeout_seconds is not None:
+            agentic_query_args_fields["timeout_seconds"] = args.agentic_timeout_seconds
+        if args.agentic_tokenizer_dir is not None:
+            agentic_query_args_fields["tokenizer_dir"] = args.agentic_tokenizer_dir
+        if args.agentic_use_responses_api:
+            agentic_query_args_fields["use_responses_api"] = True
+        agentic_query_args = OpenAIQueryArgs(**agentic_query_args_fields)
+        agentic_query_args_log = agentic_query_args.model_dump()
+        agentic_query_args_log.pop("client", None)
+        print(f"Using separate Agentic query args: {agentic_query_args_log}")
 
     llm_request_timeout_s = (
         args.timeout_seconds
@@ -747,8 +753,10 @@ async def main() -> None:
         eda_timeout_s=eda_job_timeout_s,
         shared={
             "query_args": query_args,
-            "use_separate_react_client": args.use_separate_react_client,
-            "react_query_args": react_query_args if args.use_separate_react_client else query_args,
+            "use_separate_agentic_client": args.use_separate_agentic_client,
+            "agentic_query_args": agentic_query_args
+            if args.use_separate_agentic_client
+            else query_args,
             "llm_retries": args.llm_retries,
             "llm_job_timeout_s": llm_job_timeout_s,
             "eda_job_timeout_s": eda_job_timeout_s,
@@ -756,8 +764,8 @@ async def main() -> None:
             "server": args.server,
             "remote_repo_dir": args.remote_repo_dir,
             "query_debug": args.query_debug,
-            "react_mode": args.react_mode,
-            "react_rounds": args.react_rounds,
+            "agentic_mode": args.agentic_mode,
+            "agentic_rounds": args.agentic_rounds,
             "save_round_inputs": args.debug,
         },
         include_traceback=args.debug,
@@ -795,7 +803,7 @@ async def main() -> None:
             }
         )
 
-    pad_missing_runs = args.react_mode == "markov-react-only"
+    pad_missing_runs = args.agentic_mode == "markov-agentic-only"
     if pad_missing_runs:
         existing_keys = {
             (sample["context_id"], sample["repeat_index"]) for sample in samples_output
@@ -814,7 +822,7 @@ async def main() -> None:
                         "dataset": ctx.dataset_name,
                         "repeat_index": repeat_index,
                         "ok": False,
-                        "error": "missing_vanilla_run",
+                        "error": "missing_direct_infer_run",
                         "eval_result": zero_result.model_dump(),
                         "llm_stats": None,
                     }

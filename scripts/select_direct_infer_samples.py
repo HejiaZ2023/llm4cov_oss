@@ -32,13 +32,13 @@ def _load_result_raw(result_path: Path) -> dict[str, Any]:
     return data
 
 
-def _discover_runs(vanilla_run_dir: Path) -> dict[tuple[Path, str], list[RunEntry]]:
+def _discover_runs(direct_infer_run_dir: Path) -> dict[tuple[Path, str], list[RunEntry]]:
     run_map: dict[tuple[Path, str], list[RunEntry]] = {}
-    for result_path in vanilla_run_dir.rglob("*_result.json"):
+    for result_path in direct_infer_run_dir.rglob("*_result.json"):
         run_dir = result_path.parent
         context_dir = run_dir.parent
         try:
-            dataset_rel = context_dir.relative_to(vanilla_run_dir)
+            dataset_rel = context_dir.relative_to(direct_infer_run_dir)
         except ValueError:
             continue
         if len(dataset_rel.parts) < 2:
@@ -178,8 +178,8 @@ def _load_dataset_contexts(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Select runs from a vanilla batch run.")
-    parser.add_argument("--vanilla-run-dir", required=True, type=Path)
+    parser = argparse.ArgumentParser(description="Select runs from a direct_infer batch run.")
+    parser.add_argument("--direct_infer-run-dir", required=True, type=Path)
     parser.add_argument(
         "--worst-threshold",
         type=float,
@@ -200,11 +200,11 @@ def main() -> None:
     parser.add_argument("--overwrite", action="store_true", help="Overwrite existing output dirs.")
     args = parser.parse_args()
 
-    vanilla_run_dir: Path = args.vanilla_run_dir
-    if not vanilla_run_dir.is_dir():
-        raise FileNotFoundError(f"Missing vanilla run dir: {vanilla_run_dir}")
+    direct_infer_run_dir: Path = args.direct_infer_run_dir
+    if not direct_infer_run_dir.is_dir():
+        raise FileNotFoundError(f"Missing direct_infer run dir: {direct_infer_run_dir}")
 
-    run_map = _discover_runs(vanilla_run_dir)
+    run_map = _discover_runs(direct_infer_run_dir)
     dataset_cache: dict[str, dict[str, LlmGenTbContext]] = {}
 
     context_id_map: dict[str, list[str]] = {}
@@ -268,9 +268,9 @@ def main() -> None:
             if _has_cov_gap(median_entry, worst_entry, args.worst_threshold):
                 worst_selected.append(worst_entry)
 
-    xrun_dir = Path(f"{vanilla_run_dir}_xrun_fail")
-    median_dir = Path(f"{vanilla_run_dir}_median")
-    worst_dir = Path(f"{vanilla_run_dir}_worst")
+    xrun_dir = Path(f"{direct_infer_run_dir}_xrun_fail")
+    median_dir = Path(f"{direct_infer_run_dir}_median")
+    worst_dir = Path(f"{direct_infer_run_dir}_worst")
 
     _write_output_dir(xrun_dir, xrun_selected, args.overwrite)
     _write_output_dir(median_dir, median_selected, args.overwrite)

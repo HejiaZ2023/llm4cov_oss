@@ -291,7 +291,7 @@ async def run_pipeline_queue_workers(
       results, stats = await run_pipeline_queue_workers(items, workflow=run_item_specified, ...)
 
     - items: preprocessed dataset items
-    - workflow(ctx, item): your per-item logic (vanilla/react/eval)
+    - workflow(ctx, item): your per-item logic (direct_infer/agentic/eval)
     - shared: dict injected into ctx.shared (clients, tokenizers, paths, configs)
     - Failure policy: any exception from workflow is recorded and the run continues.
     """

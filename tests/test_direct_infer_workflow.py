@@ -36,7 +36,7 @@ def load_sample_dataset() -> list[LlmGenTbContext]:
     return target_dataset
 
 
-async def vanilla_workflow_sequential() -> None:
+async def direct_infer_workflow_sequential() -> None:
     target_dataset = load_sample_dataset()
     client = AsyncOpenAI(base_url="http://localhost:8000/v1", api_key="EMPTY")
 
@@ -79,7 +79,7 @@ async def vanilla_workflow_sequential() -> None:
 
 
 def main() -> None:
-    asyncio.run(vanilla_workflow_sequential())
+    asyncio.run(direct_infer_workflow_sequential())
 
 
 if __name__ == "__main__":

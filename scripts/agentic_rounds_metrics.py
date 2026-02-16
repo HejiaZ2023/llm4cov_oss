@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-ROUND_INPUT_RE = re.compile(r"react_eval_round_inputs_(\d+)\.json$")
+ROUND_INPUT_RE = re.compile(r"agentic_eval_round_inputs_(\d+)\.json$")
 
 
 def _extract_post_round_best(
@@ -54,7 +54,7 @@ def _bool_metric_summary(values: list[bool], pass_k: int) -> dict[str, float]:
 
 def _scan_round_inputs(run_dir: Path) -> dict[str, dict[int, list[dict[str, Any]]]]:
     contexts: dict[str, dict[int, list[dict[str, Any]]]] = {}
-    for path in run_dir.rglob("react_eval_round_inputs_*.json"):
+    for path in run_dir.rglob("agentic_eval_round_inputs_*.json"):
         match = ROUND_INPUT_RE.search(path.name)
         if not match:
             continue
@@ -68,19 +68,19 @@ def _scan_round_inputs(run_dir: Path) -> dict[str, dict[int, list[dict[str, Any]
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Summarize pass rates at different react_round settings from saved inputs."
+        description="Summarize pass rates at different agentic_round settings from saved inputs."
     )
     parser.add_argument(
         "--run-dir",
         type=Path,
         required=True,
-        help="Path to run directory containing react_eval_round_inputs_*.json files.",
+        help="Path to run directory containing agentic_eval_round_inputs_*.json files.",
     )
     parser.add_argument(
         "--max-round",
         type=int,
         default=None,
-        help="Max react round to report (inclusive). Defaults to max found in inputs.",
+        help="Max agentic round to report (inclusive). Defaults to max found in inputs.",
     )
     parser.add_argument(
         "--pass-k",
@@ -92,7 +92,7 @@ def main() -> None:
 
     contexts = _scan_round_inputs(args.run_dir)
     if not contexts:
-        print("No react_eval_round_inputs_*.json files found.")
+        print("No agentic_eval_round_inputs_*.json files found.")
         return
 
     max_found_round = -1

@@ -135,7 +135,7 @@ def load_sample_dataset(
 # ----------------------------------------------------------------------
 # Workflow (parallelized per item)
 # ----------------------------------------------------------------------
-async def vanilla_workflow(ctx: RunContext, context: LlmGenTbContext) -> dict[str, Any]:
+async def direct_infer_workflow(ctx: RunContext, context: LlmGenTbContext) -> dict[str, Any]:
     """
     One item end-to-end:
       LLM → TB generation → remote coverage job
@@ -213,7 +213,7 @@ async def vanilla_workflow(ctx: RunContext, context: LlmGenTbContext) -> dict[st
 # ----------------------------------------------------------------------
 async def main() -> None:
     logging.info(f"Writing to {LOCAL_TMP_DIR}...")
-    parser = argparse.ArgumentParser(description="Run vanilla batch queries.")
+    parser = argparse.ArgumentParser(description="Run direct_infer batch queries.")
     parser.add_argument("--server", type=str, default=SERVER, help="Remote server.")
     parser.add_argument("--model", type=str, default=MODEL, help="Model name.")
     parser.add_argument("--tokenizer-dir", type=str, default=TOKENIZER_DIR, help="Tokenizer path.")
@@ -297,7 +297,7 @@ async def main() -> None:
 
     results, stats = await run_pipeline_queue_workers(
         target_dataset,
-        workflow=vanilla_workflow,
+        workflow=direct_infer_workflow,
         orchestrator_workers=args.orchestrator_workers,
         llm_concurrency=args.llm_concurrency,
         eda_concurrency=args.eda_concurrency,

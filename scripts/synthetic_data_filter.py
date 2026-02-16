@@ -67,9 +67,9 @@ def has_absolute_improvement(row: pd.Series, threshold: float = 0.01) -> bool:
 
 def get_new_run_type(valid_row: pd.Series) -> str:
     if not valid_row["prev_cov_result"]["has_coverage"]:
-        return "react_xrun"
+        return "agentic_xrun"
     else:
-        return "react_coverage"
+        return "agentic_coverage"
 
 
 def _get_system(row: pd.Series) -> str:
