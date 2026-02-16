@@ -1,0 +1,41 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments & uv cache
+.venv/
+.uv/
+.venv*/
+.env/
+.uv_cache/
+
+# Mypy, Ruff, pytest, coverage caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build / packaging artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+
+# IDE / editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+local_eval*
+eda_intermediate/
+data/cache/**/*.gz
+eval_config.bash
+log/
+temp_jsonl/

@@ -1,0 +1,43 @@
+[project]
+name = "llm4cov"
+version = "0.1.0"
+#description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "datasets>=4.4.1",
+    "google-auth>=2.47.0",
+    "hf-transfer>=0.1.9",
+    "jinja2>=3.1.6",
+    "openai>=2.13.0",
+    "pydantic>=2.12.5",
+    "tqdm>=4.67.1",
+    "transformers>=4.57.3",
+    "tree-sitter>=0.25.2",
+    "tree-sitter-systemverilog>=0.3.1",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.18.2",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+    "ruff>=0.14.3",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+lint.select = ["E", "F", "I", "UP", "B", "SIM"]
+include = ["src/**/*.py", "tests/**/*.py"]
+respect-gitignore = true
+
+[tool.mypy]
+mypy_path = ["src"]
+python_version = "3.10"
+disallow_untyped_defs = true
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_return_any = true
+warn_unused_ignores = true
+exclude = "(build|dist|.venv|.mypy_cache|.ruff_cache|.pytest_cache)"
