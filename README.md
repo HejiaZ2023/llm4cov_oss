@@ -1,5 +1,7 @@
 # LLM4Cov: Parallel Synthesis Framework for LLM-driven EDA
 
+![llmcov-design-new.png](images/llmcov-design-new.png "llmcov-design-new.png")
+
 This repository provides the infrastructure used to generate the large-scale synthetic datasets described in the **LLM4Cov** paper. It is designed to orchestrate agentic data generation by bridging modern ML environments with legacy EDA simulation constraints.
 
 ## Architecture & Motivation
