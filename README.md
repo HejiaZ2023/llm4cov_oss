@@ -1,7 +1,35 @@
-# llm4cov
----
+# LLM4Cov: Parallel Synthesis Framework for LLM-driven EDA
 
-## Prerequisites
+This repository provides the infrastructure used to generate the large-scale synthetic datasets described in the **LLM4Cov** paper. It is designed to orchestrate agentic data generation by bridging modern ML environments with legacy EDA simulation constraints.
+
+## Architecture & Motivation
+Deploying LLM agents in EDA environments presents a significant infrastructure mismatch:
+* **Legacy Simulation Constraints:** EDA tools are often tied to fixed environments (e.g., specific OS/GCC versions) and hardware-locked commercial licenses.
+* **ML Serving Requirements:** Modern LLM training and serving require high-frequency software updates and cloud-based GPU access.
+
+**LLM4Cov** resolves this through a distributed execution model, decoupling LLM orchestration from the simulation environment to maximize generation throughput.
+
+## Core Features
+### 1. Heterogeneous Server Querying
+* **LLM Tier:** Requests are handled via OpenAI-compatible endpoints, supporting both commercial APIs and self-hosted model servers (local or remote).
+* **EDA Tier:** Simulation tasks are dispatched via SSH to remote servers, where the framework manages concurrent subprocesses to interface with tool-chain CLIs.
+
+### 2. Extensible Workflow & Managed Parallelism
+The framework transparently handles coroutine and thread management. Users can specify a custom workflow and send it to the workflow entrypoint; the system then handles the scaling and orchestration across available remote resources. This architecture was utilized to generate millions of synthetic data points for the ablation studies in our research.
+
+## Technical Constraints & Implementation
+### 1. Repository Synchronization
+The current implementation utilizes SSH-based synchronization of the hardware repository to the EDA server on each execution. While this ensures isolation and works efficiently for standard datasets (e.g., CVDP-Ecov, CodeV), it may introduce overhead for exceptionally large designs (e.g., full-scale RISC-V cores). 
+
+### 2. EDA Server Implementation & Licensing
+Due to proprietary output formatting and licensing restrictions associated with commercial EDA tools, the specific server-side parsing and tool-call logic is not included in this public release.
+* **Protocol Schema:** we provide a standardized [schema](src/llm4cov/eda_client/protocol.md) for client-server communication.
+* **Implementation:** Users with valid tool licenses can utilize this schema and LLM-assisted coding to implement the server-side hooks required for their specific environment.
+* **Targeted Share** Source code may be shared with users who holds Cadence Academic License with non-redistribution agreement.
+
+
+## Installation
+### Prerequisites
 - Python ≥ 3.10
 - [uv](https://docs.astral.sh/uv/) (fast Python package manager)
 
@@ -43,3 +71,15 @@ uv run pre-commit install
 - `scripts/data_contamination_detect.py`: Detects cross-dataset contamination by similarity matching between train/eval contexts.
 - `scripts/datasets_stats.py`: Prints token-length and composition statistics for supported source datasets.
 - `scripts/run_vllm_eval_config.py`: Executes evaluation command configs and manages `vllm serve` lifecycle for local model serving.
+
+## Citation
+If you use this framework or the associated research in your work, please cite:
+
+```bibtex
+@article{zhang2026llm4cov,
+  title={LLM4Cov: Execution-Aware Agentic Learning for High-coverage Testbench Generation},
+  author={Zhang, Hejia and Yu, Zhongming and Ho, Chia-Tung and Ren, Haoxing and Khailany, Brucek and Zhao, Jishen},
+  journal={arXiv preprint arXiv:2602.16953},
+  year={2026}
+}
+```
