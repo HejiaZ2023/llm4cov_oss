@@ -103,3 +103,6 @@ options:
     }
 }
 ```
+
+# Targeted Share
+Source code may be shared with users who holds Cadence Academic License with non-redistribution agreement. Contact maintainers for more details.

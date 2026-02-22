@@ -27,7 +27,6 @@ The current implementation utilizes SSH-based synchronization of the hardware re
 Due to proprietary output formatting and licensing restrictions associated with commercial EDA tools, the specific server-side parsing and tool-call logic is not included in this public release.
 * **Protocol Schema:** we provide a standardized [schema](src/llm4cov/eda_client/protocol.md) for client-server communication.
 * **Implementation:** Users with valid tool licenses can utilize this schema and LLM-assisted coding to implement the server-side hooks required for their specific environment.
-* **Targeted Share** Source code may be shared with users who holds Cadence Academic License with non-redistribution agreement.
 
 
 ## Installation
