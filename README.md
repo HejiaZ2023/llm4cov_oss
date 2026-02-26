@@ -43,8 +43,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 Clone the repo and sync all dependencies:
 ```bash
-git clone https://github.com/HejiaZ2023/llm4cov.git
-cd llm4cov
+git clone https://github.com/HejiaZ2023/llm4cov_oss.git
+cd llm4cov_oss
 uv sync --all-extras --dev
 uv pip install -e .
 ```
