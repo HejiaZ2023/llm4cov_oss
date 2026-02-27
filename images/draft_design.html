@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM4Cov Marketing Architecture (Fixed 16:9)</title>
+  <style>
+    :root {
+      --W: 800px;
+      --H: 450px;
+
+      --bg: #f4f7fb;
+      --panel: #eef4fa;
+      --panel-border: #8aa9c4;
+      --core: #dbeafe;
+      --core-border: #2563eb;
+      --neutral: #f3f4f6;
+      --neutral-border: #9ca3af;
+      --value: #ecfdf5;
+      --value-border: #16a34a;
+      --ink: #0f172a;
+      --muted: #4b5563;
+      --line: #1d4ed8;
+      --network: #6b7280;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: var(--W);
+      height: var(--H);
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      color: var(--ink);
+      background: radial-gradient(circle at 20% 10%, #ffffff 0%, var(--bg) 45%, #e8eef8 100%);
+    }
+
+    .canvas {
+      width: var(--W);
+      height: var(--H);
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    .frame {
+      width: 100%;
+      height: 100%;
+      border: 1px solid #cbd5e1;
+      border-radius: 18px;
+      background: white;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+      padding: 12px;
+
+      display: grid;
+      grid-template-rows:200px 20px 120px 30px;
+      gap: 0;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .panel {
+      border: 1.4px solid var(--panel-border);
+      background: var(--panel);
+      border-radius: 11px;
+      padding: 10px;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+
+    .panel h2 {
+      margin: 0 0 7px 0;
+      text-align: center;
+      font-size: 13px;
+      letter-spacing: 0.2px;
+      line-height: 1.1;
+    }
+
+
+    .box {
+      border-radius: 9px;
+      border: 1.1px solid var(--neutral-border);
+      background: var(--neutral);
+      padding: 7px;
+      text-align: center;
+      font-size: 11px;
+      line-height: 1.2;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.07);
+    }
+
+    .box.core {
+      background: var(--core);
+      border: 1.6px solid var(--core-border);
+      font-weight: 600;
+    }
+
+    .box.value {
+      background: var(--value);
+      border: 1.3px solid var(--value-border);
+      font-weight: 600;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    .manager-box {
+      height: calc(100% - 21px);
+      border-radius: 10px;
+      border: 1.6px solid var(--core-border);
+      background: linear-gradient(180deg, #e6f0ff 0%, #dbeafe 100%);
+      padding: 7px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 7px;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+    }
+
+    .manager-title {
+      margin: 0;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .entry-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      align-items: start;
+    }
+
+    .workflow-wrap {
+      border: 1.1px solid #7ea5da;
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.4);
+      padding: 5px;
+      display: grid;
+      gap: 5px;
+    }
+
+    .workflow-title {
+      margin: 0;
+      text-align: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: #1e3a8a;
+      line-height: 1.1;
+      text-transform: uppercase;
+      letter-spacing: 0.2px;
+    }
+
+    .entry {
+      display: grid;
+      gap: 3px;
+      justify-items: center;
+    }
+
+    .entry-box {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--neutral-border);
+      background: #ffffff;
+      padding: 5px 4px;
+      font-size: 10px;
+      line-height: 1.15;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    }
+
+    .entry-arrow {
+      width: 2px;
+      height: 10px;
+      background: var(--line);
+      position: relative;
+    }
+
+    .entry-arrow::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: -5px;
+      width: 0;
+      height: 0;
+      border-left: 3px solid transparent;
+      border-right: 3px solid transparent;
+      border-top: 5px solid var(--line);
+    }
+
+    .interface-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .network {
+      display: grid;
+      align-items: center;
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .network .label {
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      padding: 2px 8px;
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.2;
+      max-width: 88%;
+    }
+
+    .network-arrows {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      width: 100%;
+      align-items: center;
+      justify-items: center;
+    }
+
+    .connector-down {
+      position: relative;
+      width: 2px;
+      height: 10px;
+      background: var(--line);
+    }
+
+    .connector-down::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: -5px;
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 7px solid var(--line);
+    }
+
+    .remotes {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      min-height: 0;
+      margin-bottom: 8px;
+    }
+
+    .remote-stack {
+      display: grid;
+      gap: 6px;
+    }
+
+    .value-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+      height: 100%;
+      align-items: stretch;
+    }
+
+    .value-strip {
+      display: grid;
+      grid-template-rows: 1fr;
+      align-items: center;
+      min-height: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="canvas">
+    <div class="frame">
+      <section class="panel client-panel">
+        <h2>LLM4Cov as a Client</h2>
+        <div class="manager-box">
+          <p class="manager-title">Orchestration &amp; Parallelism Manager</p>
+          <div class="workflow-wrap">
+            <p class="workflow-title">User-customized workflow</p>
+            <div class="entry-grid">
+              <div class="entry">
+                <div class="entry-box">Coroutine 1</div>
+                <div class="entry-arrow"></div>
+              </div>
+              <div class="entry">
+                <div class="entry-box">Coroutine 2</div>
+                <div class="entry-arrow"></div>
+              </div>
+              <div class="entry">
+                <div class="entry-box">Coroutine 3</div>
+                <div class="entry-arrow"></div>
+              </div>
+              <div class="entry">
+                <div class="entry-box">Coroutine 4</div>
+                <div class="entry-arrow"></div>
+              </div>
+            </div>
+          </div>
+          <div class="interface-grid">
+            <div class="box core">LLM Interface<br><span class="muted">OpenAI API endpoint</span></div>
+            <div class="box core">EDA Interface<br><span class="muted">SSH remote execution</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="network" aria-label="Network boundary">
+        <!--div class="label">Secure network boundary: encrypted query/response + command/result transport</div-->
+        <div class="network-arrows">
+          <div class="connector-down"></div>
+          <div class="connector-down"></div>
+        </div>
+      </section>
+
+      <section class="remotes">
+        <div class="panel">
+          <h2>Remote LLM Servers</h2>
+          <div class="remote-stack">
+            <div class="box">Commercial APIs</div>
+            <div class="box">Self-Hosted Models</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Remote EDA Servers</h2>
+          <div class="remote-stack">
+            <div class="box"><b>Licensed Legacy Environment</b></div>
+            <div class="box">Simulator CLI & Result Parser</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="value-strip" aria-label="Business value">
+        <div class="value-row">
+          <div class="box value">Throughput at scale</div>
+          <div class="box value">Decoupled ML + EDA environments</div>
+          <div class="box value">Proved by millions of synthetic data points</div>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>
