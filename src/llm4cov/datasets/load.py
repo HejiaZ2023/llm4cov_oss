@@ -33,11 +33,13 @@ CACHE_PATH = Path(__file__).parents[3] / "data/cache/datasets"
 def load_dataset_by_name(dataset_name: str, split: str = "train") -> list[DataContext]:
     CACHE_PATH.mkdir(parents=True, exist_ok=True)
     if dataset_name == "zhuyaoyu/CodeV-R1-dataset":
-        return load_codev_r1_dataset(split)
+        return load_codev_r1_dataset(split, revision="ffc4698071098044c72bde14fdad309eb3a1c5da")
     elif dataset_name == "wilyub/VeriThoughtsTrainSet":
         return load_verithoughts_dataset(split)
     elif dataset_name == "hez2024/cvdp_ecov_eval":
         return load_cvdp_ecov_dataset(split)
+    elif dataset_name.startswith("hez2024/CodeV-R1-dataset"):
+        return load_codev_r1_dataset(split, ds_name_overwrite=dataset_name)
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")
 
@@ -48,11 +50,14 @@ def _compute_rtl_tokens(rtl_files: list[DataFile]) -> int:
     return total_length
 
 
-def load_codev_r1_dataset(split: str = "train") -> list[DataContext]:
-    ds_name = "zhuyaoyu/CodeV-R1-dataset"
-    data_ds = ds.load_dataset(
-        ds_name, name="sft", revision="ffc4698071098044c72bde14fdad309eb3a1c5da", split=split
-    )
+def load_codev_r1_dataset(
+    split: str = "train", revision: str | None = None, ds_name_overwrite: str | None = None
+) -> list[DataContext]:
+    ds_name = "zhuyaoyu/CodeV-R1-dataset" if ds_name_overwrite is None else ds_name_overwrite
+    if revision is not None:
+        data_ds = ds.load_dataset(ds_name, name="sft", revision=revision, split=split)
+    else:
+        data_ds = ds.load_dataset(ds_name, name="sft", split=split)
     df = pd.DataFrame(data_ds)
     ret = []
     rtl_tokens_cache_path = CACHE_PATH / "CodeV_R1_rtl_tokens_cache.json.gz"
