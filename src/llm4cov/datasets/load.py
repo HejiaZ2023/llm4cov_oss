@@ -33,7 +33,9 @@ CACHE_PATH = Path(__file__).parents[3] / "data/cache/datasets"
 def load_dataset_by_name(dataset_name: str, split: str = "train") -> list[DataContext]:
     CACHE_PATH.mkdir(parents=True, exist_ok=True)
     if dataset_name == "zhuyaoyu/CodeV-R1-dataset":
-        return load_codev_r1_dataset(split, revision="ffc4698071098044c72bde14fdad309eb3a1c5da")
+        return load_codev_r1_dataset(
+            split, revision="ffc4698071098044c72bde14fdad309eb3a1c5da", subset_name="sft"
+        )
     elif dataset_name == "wilyub/VeriThoughtsTrainSet":
         return load_verithoughts_dataset(split)
     elif dataset_name == "hez2024/cvdp_ecov_eval":
@@ -51,13 +53,18 @@ def _compute_rtl_tokens(rtl_files: list[DataFile]) -> int:
 
 
 def load_codev_r1_dataset(
-    split: str = "train", revision: str | None = None, ds_name_overwrite: str | None = None
+    split: str = "train",
+    revision: str | None = None,
+    ds_name_overwrite: str | None = None,
+    subset_name: str | None = None,
 ) -> list[DataContext]:
     ds_name = "zhuyaoyu/CodeV-R1-dataset" if ds_name_overwrite is None else ds_name_overwrite
+    load_ds_args = {"split": split}
     if revision is not None:
-        data_ds = ds.load_dataset(ds_name, name="sft", revision=revision, split=split)
-    else:
-        data_ds = ds.load_dataset(ds_name, name="sft", split=split)
+        load_ds_args["revision"] = revision
+    if subset_name is not None:
+        load_ds_args["name"] = subset_name
+    data_ds = ds.load_dataset(ds_name, **load_ds_args)
     df = pd.DataFrame(data_ds)
     ret = []
     rtl_tokens_cache_path = CACHE_PATH / "CodeV_R1_rtl_tokens_cache.json.gz"
