@@ -812,10 +812,10 @@ requires-dist = [
     { name = "google-auth", specifier = ">=2.47.0" },
     { name = "hf-transfer", specifier = ">=0.1.9" },
     { name = "jinja2", specifier = ">=3.1.6" },
-    { name = "openai", specifier = ">=2.13.0" },
-    { name = "pydantic", specifier = ">=2.12.5" },
+    { name = "openai", specifier = ">=2.0" },
+    { name = "pydantic", specifier = ">=2.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
-    { name = "transformers", specifier = ">=4.57.3" },
+    { name = "transformers", specifier = ">=4.40" },
     { name = "tree-sitter", specifier = ">=0.25.2" },
     { name = "tree-sitter-systemverilog", specifier = ">=0.3.1" },
 ]

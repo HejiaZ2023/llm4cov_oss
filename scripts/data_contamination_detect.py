@@ -3,7 +3,9 @@
 import argparse
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 
+import pandas as pd
 from tqdm import tqdm
 
 from llm4cov.datasets.load import load_dataset_by_name
@@ -86,6 +88,22 @@ def contexts_similar(
     return False
 
 
+def _load_df_for_filter(dataset: str, split: str) -> tuple[pd.DataFrame, str]:
+    """Load dataset as DataFrame and return (df, id_column_name)."""
+    if dataset.endswith(".parquet") or (dataset.startswith("/") and Path(dataset).exists()):
+        df = pd.read_parquet(dataset)
+    else:
+        import datasets as ds
+        df = pd.DataFrame(ds.load_dataset(dataset, split=split))
+    # auto-detect ID column
+    if "problem_id" in df.columns:
+        return df, "problem_id"
+    elif "id" in df.columns:
+        return df, "id"
+    else:
+        raise ValueError(f"Cannot find ID column in {dataset!r}; columns={list(df.columns)}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -95,23 +113,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--eval-dataset",
         required=True,
-        help="Eval dataset name (e.g. hez2024/cvdp_ecov_eval).",
+        help="Eval dataset path or HF name (e.g. a local .parquet or hez2024/cvdp_ecov_eval).",
     )
     parser.add_argument(
         "--train-dataset",
         required=True,
-        help="Train dataset name (e.g. zhuyaoyu/CodeV-R1-dataset).",
+        help="Train dataset path or HF name (e.g. a local .parquet or zhuyaoyu/CodeV-R1-dataset).",
     )
-    parser.add_argument(
-        "--eval-split",
-        default="eval",
-        help="Eval dataset split name.",
-    )
-    parser.add_argument(
-        "--train-split",
-        default="train",
-        help="Train dataset split name.",
-    )
+    parser.add_argument("--eval-split", default="eval", help="Eval dataset split name.")
+    parser.add_argument("--train-split", default="train", help="Train dataset split name.")
     parser.add_argument(
         "--threshold",
         type=float,
@@ -121,7 +131,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         default="data_contamination.tsv",
-        help="Output file path.",
+        help="TSV output: contaminated train_id TAB matching_eval_id.",
+    )
+    parser.add_argument(
+        "--filter-train-output",
+        default=None,
+        help=(
+            "If given, write a filtered version of --train-dataset (parquet) "
+            "with contaminated rows removed to this path."
+        ),
     )
     return parser.parse_args()
 
@@ -134,6 +152,7 @@ def main() -> int:
     eval_index = build_context_index(eval_contexts)
     train_index = build_context_index(train_contexts)
 
+    contaminated_train_ids: set[str] = set()
     with open(args.output, "w") as fout:
         for train_context in tqdm(train_contexts, desc="Train contexts"):
             train_files = train_index[train_context.id]
@@ -143,7 +162,24 @@ def main() -> int:
                     line = f"{train_context.id}\t{eval_context.id}"
                     print(line)
                     fout.write(line + "\n")
+                    contaminated_train_ids.add(train_context.id)
                     break
+
+    print(f"\nContaminated train samples: {len(contaminated_train_ids)}")
+    print(f"Results written to {args.output}")
+
+    # ── optional: write filtered train parquet ────────────────────────────────
+    if args.filter_train_output:
+        print(f"\nFiltering train dataset → {args.filter_train_output} ...")
+        train_df, id_col = _load_df_for_filter(args.train_dataset, args.train_split)
+        mask = ~train_df[id_col].astype(str).isin(contaminated_train_ids)
+        train_df_clean = train_df[mask].reset_index(drop=True)
+        Path(args.filter_train_output).parent.mkdir(parents=True, exist_ok=True)
+        train_df_clean.to_parquet(args.filter_train_output, index=False)
+        removed = len(train_df) - len(train_df_clean)
+        print(f"  removed: {removed}  remaining: {len(train_df_clean)}")
+        print(f"  saved → {args.filter_train_output}")
+
     return 0
 
 

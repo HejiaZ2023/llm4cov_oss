@@ -16,7 +16,8 @@ def eval_cov_result_against_expectations(
     cov_result.has_coverage = status == "success"
     if not cov_result.has_coverage:
         return cov_result
-    exp: list[CovExpectation] = context.misc.get("targets", [])
+    _exp_raw = context.misc.get("targets", [])
+    exp: list[CovExpectation] = [CovExpectation(**t) if isinstance(t, dict) else t for t in _exp_raw]
 
     assert "cov_info" in cov_result_raw, "Missing 'cov_info' in result data"
     assert "summary" in cov_result_raw["cov_info"], "Missing 'summary' in cov_info"
