@@ -16,6 +16,7 @@ from typing import Any
 
 from llm4cov.datasets.types import DataFile, LlmGenTbContext
 from llm4cov.eda_client.remote_sync import clear_remote_dir, prepare_local_dir, sync_dir_to_remote
+from llm4cov.eda_client.xfer_client import submit_cov_job
 
 
 def run_remote_cov_job_pipeline(
@@ -26,33 +27,10 @@ def run_remote_cov_job_pipeline(
     skip_detail: bool = False,
     timeout: int = 600,
 ) -> dict[str, Any]:
-    """Prepare local dir, sync to remote, run remote cov job, fetch result, and cleanup."""
-    # --- 1️⃣ Prepare local dir ---
-    local_work_dir = prepare_local_dir(context, tb_file)
-
-    # --- 2️⃣ Sync to remote ---
-    remote_work_dir = sync_dir_to_remote(local_work_dir, server)
-
-    # --- 3️⃣ Run remote coverage job ---
-    result = run_remote_cov_job_wrapper(
-        server=server,
-        eda_repo_dir=eda_repo_dir,
-        remote_work_dir=remote_work_dir,
-        local_work_dir=local_work_dir,
-        context=context,
-        tb_file=tb_file,
-        timeout=timeout,
-        skip_detail=skip_detail,
+    """Route the coverage job via the xfer transport (local fs or sftp relay)."""
+    return submit_cov_job(
+        server, eda_repo_dir, context, tb_file, skip_detail=skip_detail, timeout=timeout
     )
-
-    assert "local_work_dir" not in result, "local_work_dir should not be in the result"
-    result["local_work_dir"] = local_work_dir
-
-    # --- 4️⃣ Cleanup remote dir ---
-    time.sleep(0.1)  # Ensure all remote ops are done
-    clear_remote_dir(remote_work_dir, server)
-
-    return result
 
 
 def run_remote_cov_job_wrapper(
