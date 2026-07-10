@@ -29,6 +29,19 @@ def _encode(content: str | bytes) -> bytes:
     return content.encode() if isinstance(content, str) else content
 
 
+def _attach_relay_timing(result: dict[str, Any], raw: bytes | str | None) -> dict[str, Any]:
+    """Attach watcher-side timing when the relay published it alongside result.json."""
+    if raw is None:
+        return result
+    try:
+        timing = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return result
+    if isinstance(timing, dict):
+        result["relay_timing"] = timing
+    return result
+
+
 class Transport:
     """传输抽象:submit job / poll result / cleanup。"""
 
@@ -66,7 +79,11 @@ class LocalTransport(Transport):
             if done.exists():
                 text = (self.x / "results" / job_id / "result.json").read_text()
                 result: dict[str, Any] = json.loads(text)
-                return result
+                timing_path = self.x / "results" / job_id / "relay_timing.json"
+                return _attach_relay_timing(
+                    result,
+                    timing_path.read_text() if timing_path.is_file() else None,
+                )
             time.sleep(1)
         raise TimeoutError(f"EDA result timeout: {job_id}")
 
@@ -121,7 +138,12 @@ class SftpTransport(Transport):
                 continue
             with self.sftp.open(f"results/{job_id}/result.json", "rb") as f:
                 result: dict[str, Any] = json.loads(f.read())
-            return result
+            try:
+                with self.sftp.open(f"results/{job_id}/relay_timing.json", "rb") as f:
+                    relay_timing = f.read()
+            except OSError:
+                relay_timing = None
+            return _attach_relay_timing(result, relay_timing)
         raise TimeoutError(f"EDA result timeout: {job_id}")
 
     def _rmtree(self, path: str) -> None:
@@ -171,6 +193,8 @@ def submit_cov_job(
     timeout: int = 600,
 ) -> dict[str, Any]:
     """构 job → 选传输 → 提交 → 轮询结果 → 清理;返回 result.json 解析后的 dict。"""
+    started_monotonic = time.monotonic()
+    submitted_at_unix = time.time()
     dut = context.dut_top_module_name
     sv_files = [f.name for f in context.rtl_files]
     inputs = {f.name: _encode(f.content) for f in context.rtl_files}
@@ -187,14 +211,42 @@ def submit_cov_job(
         "skip_detail": skip_detail,
         "inputs_sha256": {n: _sha(c) for n, c in inputs.items()},
         "eda_repo_dir": eda_repo_dir,
-        "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "submitted_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(submitted_at_unix)),
+        "submitted_at_unix": submitted_at_unix,
     }
+    connect_started = time.monotonic()
     transport = make_transport(server)
+    connect_seconds = time.monotonic() - connect_started
+    submit_seconds = 0.0
+    wait_result_seconds = 0.0
+    cleanup_seconds = 0.0
     try:
+        submit_started = time.monotonic()
         transport.submit(job_id, inputs, manifest)
+        submit_seconds = time.monotonic() - submit_started
+        wait_started = time.monotonic()
         result = transport.poll_result(job_id, timeout * 3)
+        wait_result_seconds = time.monotonic() - wait_started
+        cleanup_started = time.monotonic()
         transport.cleanup(job_id)
+        cleanup_seconds = time.monotonic() - cleanup_started
     finally:
         transport.close()
-    result.update({"job_id": job_id, "fetched_at": time.strftime("%Y-%m-%d %H:%M:%S")})
+    fetched_at_unix = time.time()
+    result.update(
+        {
+            "job_id": job_id,
+            "fetched_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(fetched_at_unix)),
+            "fetched_at_unix": fetched_at_unix,
+            "xfer_timing": {
+                "transport": type(transport).__name__,
+                "submitted_at_unix": submitted_at_unix,
+                "transport_connect_seconds": connect_seconds,
+                "submit_seconds": submit_seconds,
+                "wait_result_seconds": wait_result_seconds,
+                "cleanup_seconds": cleanup_seconds,
+                "total_seconds": time.monotonic() - started_monotonic,
+            },
+        }
+    )
     return result
